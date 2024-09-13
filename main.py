@@ -2,9 +2,12 @@ import urllib.parse
 
 import requests
 from bs4 import BeautifulSoup
-import json
 import random
 import time
+import json
+import csv
+from scipy.stats import spearmanr
+
 
 
 # scrape top 10 results from yahoo
@@ -178,5 +181,91 @@ queries = [
     "Who did victoria marry and wen"
 ]
 
+with open('/Users/steph/PycharmProjects/572_hw1/Google_Result2.json') as google_file:
+    google_results = json.load(google_file)
+
+with open('/Users/steph/PycharmProjects/572_hw1/search_results.json') as yahoo_file:
+    yahoo_results = json.load(yahoo_file)
+
+# compare links for each query and return matching pairs
+def compare_search_results(google_data, yahoo_data):
+    matches = {}
+
+    # Iterate through each query in google_results
+    for query in google_data:
+        if query in yahoo_data:
+            google_links = google_data[query]
+            yahoo_links = yahoo_data[query]
+            query_matches = []
+
+            # Compare the links and find matching pairs
+            for google_index, google_link in enumerate(google_links, start=1):
+                if google_link in yahoo_links:
+                    yahoo_index = yahoo_links.index(google_link) + 1
+                    query_matches.append((google_index, yahoo_index))
+
+            if query_matches:
+                matches[query] = query_matches  # Store as list of tuples
+
+    return matches
+
+
+# calculate Spearman's coefficient
+def calculate_spearman(query_matches):
+    if len(query_matches) == 1:
+        # Special case when there's only one pair
+        google_rank, yahoo_rank = query_matches[0]
+        return 1 if google_rank == yahoo_rank else 0
+
+    google_ranks = [match[0] for match in query_matches]
+    yahoo_ranks = [match[1] for match in query_matches]
+
+    # Check if input arrays are constant
+    if len(set(google_ranks)) == 1 or len(set(yahoo_ranks)) == 1:
+        return 0  # Constant input case, correlation is undefined
+
+    # Use scipy's spearmanr to calculate the correlation
+    rho, _ = spearmanr(google_ranks, yahoo_ranks)
+
+    return rho
+
+def generate_csv(results, csv_file_path):
+    with open(csv_file_path, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(['Query No.', 'Number of Matched Pairs', 'Percent Overlap', 'Spearman Coefficient'])
+
+        total_matched = 0
+        total_percent = 0
+        total_spearman = 0
+        num_queries = len(results)
+
+        for idx, (query, matches) in enumerate(results.items(), start=1):
+            num_matched = len(matches)
+            percent_overlap = (num_matched / 10) * 100
+            spearman_coefficient = calculate_spearman(matches)
+
+            # Write the results to CSV
+            writer.writerow([f"Query {idx}", num_matched, percent_overlap, spearman_coefficient])
+
+            # Track totals for averages
+            total_matched += num_matched
+            total_percent += percent_overlap
+            total_spearman += spearman_coefficient
+
+        # Write averages at the end
+        avg_matched = total_matched / num_queries
+        avg_percent = total_percent / num_queries
+        avg_spearman = total_spearman / num_queries
+
+        writer.writerow(['Averages', avg_matched, avg_percent, avg_spearman])
+
 if __name__ == "__main__":
-    run_scraper(queries)
+    # run_scraper(queries)
+
+    # Compare results
+    matching_results = compare_search_results(google_results, yahoo_results)
+
+    # Generate CSV output
+    generate_csv(matching_results, '/Users/steph/PycharmProjects/572_hw1/search_comparison_results.csv')
+
+    print("CSV file generated: search_comparison_results.csv")
